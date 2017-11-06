@@ -1,8 +1,7 @@
-package crawler;
+package repository.crawler;
 
 import org.junit.Assert;
 import org.junit.Test;
-import repository.crawler.SvnCrawler;
 import repository.crawler.exception.CrawlerException;
 import repository.crawler.exception.SvnCrawlerException;
 import repository.model.*;
