@@ -7,6 +7,10 @@ import repository.model.Revisions;
 
 public interface RepoCrawler {
 
+    void setCollectFileContentProperty(boolean value);
+
+    void setCollectFileDiffProperty(boolean value);
+
     Revisions getRevisions() throws CrawlerException;
 
     Revision getLastRevision() throws CrawlerException;
