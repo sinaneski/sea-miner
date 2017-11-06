@@ -9,9 +9,13 @@ import org.tmatesoft.svn.core.wc.SVNWCUtil;
 import org.tmatesoft.svn.core.wc2.SvnOperationFactory;
 import repository.crawler.exception.CrawlerException;
 import repository.crawler.exception.SvnCrawlerException;
-
+import repository.filter.CommitFilter;
+import repository.filter.CrawlerFilter;
+import repository.filter.FileFilter;
 import repository.model.*;
+
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class SvnCrawler implements RepoCrawler {
@@ -20,6 +24,7 @@ public class SvnCrawler implements RepoCrawler {
     private final SvnOperationFactory svnOperationFactory;
     private final SVNRepository svnRepository;
 
+    private CrawlerFilter filter = new CrawlerFilter();
     private boolean collectFileContentProperty = false;
     private boolean collectFileDiffProperty = true;
 
@@ -87,7 +92,7 @@ public class SvnCrawler implements RepoCrawler {
             List<ChangeItem> files = getChangedFiles(revision);
             commit.setChangeItemList(files);
 
-            return commit;
+            return filter.acceptCommit(commit) ? commit : null;
         }
         catch (SVNException e) {
             log.error(e.getMessage());
@@ -96,7 +101,8 @@ public class SvnCrawler implements RepoCrawler {
     }
 
     private List<ChangeItem> getChangedFiles(Revision revision) throws SVNException {
-        List<ChangeItem> files = svnOperations.getChangedFileAt(svnRepository, revision);
+        List<ChangeItem> files = svnOperations.getChangedFileAt(svnRepository, revision)
+                .stream().filter(f -> filter.acceptFile(f)).collect(Collectors.toList());
 
         for (ChangeItem c: files ) {
             c.setDiff(getFileDiff(c));
@@ -148,6 +154,16 @@ public class SvnCrawler implements RepoCrawler {
     @Override
     public void setCollectFileDiffProperty(boolean value) {
         collectFileDiffProperty = value;
+    }
+
+    @Override
+    public void addFilter(CommitFilter commitFilter) {
+        filter.add(commitFilter);
+    }
+
+    @Override
+    public void addFilter(FileFilter fileFilter) {
+        filter.add(fileFilter);
     }
 
     public boolean isCollectFileContentProperty() {

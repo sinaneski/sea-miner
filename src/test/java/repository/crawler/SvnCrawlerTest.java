@@ -4,6 +4,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import repository.crawler.exception.CrawlerException;
 import repository.crawler.exception.SvnCrawlerException;
+import repository.filter.FileSourceCodeFilter;
 import repository.model.*;
 
 import java.nio.file.Path;
@@ -117,6 +118,18 @@ public class SvnCrawlerTest {
         Assert.assertEquals(fileDiff, commit.getChangeItemList().get(0).getDiff());
         Assert.assertEquals(0, commit.getChangeItemList().get(0).getDiff().getAddedLineCount());
         Assert.assertEquals(12, commit.getChangeItemList().get(0).getDiff().getDeletedLineCount());
+    }
+
+    @Test
+    public void getCommitsAt_ShouldReturnOnlyFiles_WhenCrawlerHasFileSourceFilter() throws CrawlerException {
+        String url = getSvnTestRepoUrl();
+        SvnCrawler repo = SvnCrawler.openConnection(url);
+        repo.addFilter(new FileSourceCodeFilter());
+        Commit commit = repo.getCommitAt(Revision.fromLong(4));
+
+        for(ChangeItem fileChange : commit.getChangeItemList()) {
+            Assert.assertEquals(ItemKind.FILE, fileChange.getItemKind());
+        }
     }
 
 
