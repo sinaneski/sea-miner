@@ -1,5 +1,6 @@
 package repository.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 @Data
@@ -13,6 +14,7 @@ public class ChangeItem {
     private Revision oldRevision;
     private FileDiff diff;
 
+    @JsonIgnore
     private String content;
 
     public ChangeItem(Revision revision, String path) {
