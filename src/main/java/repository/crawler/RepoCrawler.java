@@ -22,4 +22,6 @@ public interface RepoCrawler {
     Revision getLastRevision() throws CrawlerException;
 
     Commit getCommitAt(Revision revision) throws CrawlerException;
+
+    void dispose();
 }
