@@ -4,7 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.tmatesoft.svn.core.SVNException;
 import org.tmatesoft.svn.core.SVNURL;
 import org.tmatesoft.svn.core.auth.ISVNAuthenticationManager;
-import org.tmatesoft.svn.core.io.SVNRepository;
 import org.tmatesoft.svn.core.wc.SVNWCUtil;
 import org.tmatesoft.svn.core.wc2.SvnOperationFactory;
 import repository.crawler.exception.CrawlerException;
@@ -20,27 +19,21 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SvnCrawler implements RepoCrawler {
 
-    private final String url;
-    private final SvnOperationFactory svnOperationFactory;
-    private final SVNRepository svnRepository;
-
-    private CrawlerFilter filter = new CrawlerFilter();
+    private final CrawlerFilter filter = new CrawlerFilter();
     private boolean collectFileContentProperty = false;
     private boolean collectFileDiffProperty = true;
 
-    SvnOperations svnOperations = new SvnOperations();
+    private final SvnOperations svnOperations;
 
-    public static SvnCrawler openConnection(String svnURL) throws CrawlerException {
-        return openConnection(svnURL, "anonymous", "anonymous".toCharArray());
+    public static SvnCrawler openConnection(String url) throws CrawlerException {
+        return openConnection(url, "anonymous", "anonymous".toCharArray());
     }
 
-    public static SvnCrawler openConnection(String svnURL, String name, char [] password) throws CrawlerException {
+    public static SvnCrawler openConnection(String url, String name, char [] password) throws CrawlerException {
         final SvnOperationFactory svnOperationFactory = new SvnOperationFactory();
-        SVNRepository svnRepository;
-
+        SVNURL svnUrl;
         try {
-            SVNURL svnurl = SVNURL.parseURIEncoded(svnURL);
-            svnRepository = svnOperationFactory.getRepositoryPool().createRepository(svnurl, true);
+            svnUrl = SVNURL.parseURIEncoded(url);
         }
         catch (SVNException e) {
             log.error(e.getMessage());
@@ -48,25 +41,23 @@ public class SvnCrawler implements RepoCrawler {
         }
 
         ISVNAuthenticationManager authManager = SVNWCUtil.createDefaultAuthenticationManager(name, password);
-        svnRepository.setAuthenticationManager(authManager);
-        return new SvnCrawler(svnOperationFactory, svnRepository, svnURL);
+        return new SvnCrawler(svnOperationFactory, authManager, svnUrl);
     }
 
-    private SvnCrawler(SvnOperationFactory svnOperationFactory, SVNRepository svnRepository, String svnURL) {
-        this.svnOperationFactory = svnOperationFactory;
-        this.svnRepository = svnRepository;
-        this.url = svnURL;
+
+    private SvnCrawler(SvnOperationFactory svnOperationFactory, ISVNAuthenticationManager authManager,
+                       SVNURL  svnurl) {
+        svnOperations = new SvnOperations(svnOperationFactory, authManager, svnurl);
     }
 
     public void dispose() {
-        svnRepository.closeSession();
-        svnOperationFactory.dispose();
+        svnOperations.dispose();
     }
 
 
     public Revisions getRevisions() throws CrawlerException {
         try {
-           return svnOperations.getRevisions(svnRepository);
+            return svnOperations.getRevisions();
         }
         catch (SVNException e) {
             log.error(e.getMessage());
@@ -76,7 +67,7 @@ public class SvnCrawler implements RepoCrawler {
 
     public Revision getLastRevision() throws CrawlerException {
         try {
-            return svnOperations.getLastRevision(svnRepository);
+            return svnOperations.getLastRevision();
         }
         catch (SVNException e) {
             log.error(e.getMessage());
@@ -87,7 +78,11 @@ public class SvnCrawler implements RepoCrawler {
     public Commit getCommitAt(Revision revision) throws CrawlerException {
 
         try {
-            Commit commit = svnOperations.getCommitAt(svnRepository, revision);
+            Commit commit = svnOperations.getCommitAt(revision);
+
+            if(commit == null) {
+                return null;
+            }
 
             List<ChangeItem> files = getChangedFiles(revision);
             commit.setChangeItemList(files);
@@ -101,8 +96,8 @@ public class SvnCrawler implements RepoCrawler {
     }
 
     private List<ChangeItem> getChangedFiles(Revision revision) throws SVNException {
-        List<ChangeItem> files = svnOperations.getChangedFileAt(svnRepository, revision)
-                .stream().filter(f -> filter.acceptFile(f)).collect(Collectors.toList());
+        List<ChangeItem> files = svnOperations.getChangedFileAt(revision)
+                .stream().filter(filter::acceptFile).collect(Collectors.toList());
 
         for (ChangeItem c: files ) {
             c.setDiff(getFileDiff(c));
@@ -118,7 +113,7 @@ public class SvnCrawler implements RepoCrawler {
         }
         String diffContent = "";
         try {
-            diffContent = svnOperations.getFileDiffContent(svnOperationFactory, url + changeItem.getPath(), changeItem.getRevision(), changeItem.getOldRevision());
+            diffContent = svnOperations.getFileDiffContent(changeItem.getPath(), changeItem.getRevision(), changeItem.getOldRevision());
         }
         catch (SVNException e) {
             log.error("getChangedFileDiffContent" +  e.getMessage());
@@ -138,7 +133,7 @@ public class SvnCrawler implements RepoCrawler {
         }
 
         try {
-            content = svnOperations.getFileContent(svnRepository, changeItem.getPath(), changeItem.getRevision());
+            content = svnOperations.getFileContent(changeItem.getPath(), changeItem.getRevision());
         }
         catch (SVNException e) {
             log.error(e.getMessage());

@@ -2,6 +2,7 @@ package repository.crawler;
 
 import lombok.extern.slf4j.Slf4j;
 import org.tmatesoft.svn.core.*;
+import org.tmatesoft.svn.core.auth.ISVNAuthenticationManager;
 import org.tmatesoft.svn.core.internal.wc2.ng.SvnDiffGenerator;
 import org.tmatesoft.svn.core.io.SVNRepository;
 import org.tmatesoft.svn.core.wc.SVNRevision;
@@ -17,26 +18,46 @@ import java.util.*;
 @Slf4j
 public class SvnOperations {
 
-    public Revision getLastRevision(SVNRepository svnRepository) throws SVNException {
+    private final SvnOperationFactory svnOperationFactory;
+    private final ISVNAuthenticationManager authManager;
+    private final SVNURL svnUrl;
+
+    public SvnOperations(SvnOperationFactory svnOperationFactory,
+                         ISVNAuthenticationManager authManager,
+                         SVNURL svnUrl) {
+        this.svnOperationFactory = svnOperationFactory;
+        this.authManager = authManager;
+        this.svnUrl = svnUrl;
+    }
+    public Revision getLastRevision() throws SVNException {
+        SVNRepository svnRepository = createSvnRepository();
         return Revision.fromLong(svnRepository.getLatestRevision());
     }
 
-    public Revisions getRevisions(SVNRepository svnRepository) throws SVNException {
+    public Revisions getRevisions() throws SVNException {
+        SVNRepository svnRepository = createSvnRepository();
         Revisions revisions = new Revisions();
         long startRevision = 1;
-        Collection logEntries;
+        Collection<SVNLogEntry> logEntries;
 
-        logEntries = getSvnLog(svnRepository, startRevision, svnRepository.getLatestRevision());
+        logEntries = getSvnLog(startRevision, svnRepository.getLatestRevision());
 
-        for(Iterator<SVNLogEntry> entries = logEntries.iterator(); entries.hasNext();) {
-            SVNLogEntry logEntry = entries.next();
+        for (SVNLogEntry logEntry : logEntries) {
             revisions.add(Revision.fromLong(logEntry.getRevision()));
         }
 
         return revisions;
     }
 
-    private Collection getSvnLog(SVNRepository svnRepository, long startRevision, long endRevision) throws SVNException {
+    private SVNRepository createSvnRepository() throws SVNException {
+        SVNRepository svnRepository = svnOperationFactory.getRepositoryPool().createRepository(svnUrl, true);
+        svnRepository.setAuthenticationManager(authManager);
+        return svnRepository;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Collection<SVNLogEntry> getSvnLog(long startRevision, long endRevision) throws SVNException {
+        SVNRepository svnRepository = createSvnRepository();
         return svnRepository.log(new String[]{""},
                 null,
                 startRevision,
@@ -45,24 +66,18 @@ public class SvnOperations {
                 true);
     }
 
-    public Commit getCommitAt(SVNRepository svnRepository, Revision revision) throws SVNException {
+    public Commit getCommitAt(Revision revision) throws SVNException {
 
-        SVNLogEntry logEntry = getSVNLogEntryAt(svnRepository, revision.toLong());
+        SVNLogEntry logEntry = getSVNLogEntryAt(revision.toLong());
 
         return logEntry == null ? null : convertSvnLogEntryToCommit(logEntry);
     }
 
-    private SVNLogEntry getSVNLogEntryAt(SVNRepository svnRepository, long revision) throws SVNException {
+    private SVNLogEntry getSVNLogEntryAt(long revision) throws SVNException {
 
-        Collection logEntries = getSvnLog(svnRepository, revision, revision);
+        Collection<SVNLogEntry> logEntries = getSvnLog(revision, revision);
 
-        Iterator<SVNLogEntry> iterator = logEntries.iterator();
-
-        while(iterator.hasNext()) {
-            return iterator.next();
-
-        }
-        return null;
+        return logEntries.stream().findFirst().orElse(null);
     }
 
     private Commit convertSvnLogEntryToCommit(SVNLogEntry logEntry) {
@@ -78,23 +93,22 @@ public class SvnOperations {
     }
 
 
-    public List<ChangeItem> getChangedFileAt(SVNRepository svnRepository, Revision revision) throws SVNException {
-
+    public List<ChangeItem> getChangedFileAt(Revision revision) throws SVNException {
         List<ChangeItem> changeItemList = new ArrayList<>();
-        SVNLogEntry logEntry = getSVNLogEntryAt(svnRepository, revision.toLong());
+        SVNLogEntry logEntry = getSVNLogEntryAt(revision.toLong());
 
         if(!hasChangedFile(logEntry)) {  return changeItemList;}
 
-        Set changedPathsSet = logEntry.getChangedPaths().keySet();
+        Set<String> changedPathsSet = logEntry.getChangedPaths().keySet();
 
-        Iterator<SVNLogEntryPath> changedPaths = changedPathsSet.iterator();
+        for (String aChangedPathsSet : changedPathsSet) {
 
-        while (changedPaths.hasNext()) {
-
-            SVNLogEntryPath entryPath =  logEntry.getChangedPaths().get(changedPaths.next());
+            SVNLogEntryPath entryPath = logEntry.getChangedPaths().get(aChangedPathsSet);
 
             ChangeItem changeItem = svnLogEntryPathToChangeFile(revision, entryPath);
-            if (changeItem == null) { continue; }
+            if (changeItem == null) {
+                continue;
+            }
             changeItemList.add(changeItem);
         }
 
@@ -155,9 +169,9 @@ public class SvnOperations {
     }
 
 
-    public String getFileDiffContent(SvnOperationFactory svnOperationFactory, String path, Revision oldRevision, Revision newRevision) throws SVNException {
+    public String getFileDiffContent(String relativePath, Revision oldRevision, Revision newRevision) throws SVNException {
 
-        SVNURL fileUrl = SVNURL.parseURIEncoded(path);
+        SVNURL fileUrl = SVNURL.parseURIEncoded(svnUrl.toDecodedString() + relativePath);
         return getFileDiffContent(svnOperationFactory, fileUrl, oldRevision, newRevision);
     }
 
@@ -174,15 +188,17 @@ public class SvnOperations {
         diff.setOutput(byteArrayOutputStream);
         diff.run();
 
-        final String actualDiffOutput = new String(byteArrayOutputStream.toByteArray());
-
-        return actualDiffOutput;
+        return new String(byteArrayOutputStream.toByteArray());
     }
 
-    public String getFileContent(SVNRepository svnRepository, String filename, Revision revision) throws SVNException {
+    public String getFileContent(String filename, Revision revision) throws SVNException {
+        SVNRepository svnRepository = createSvnRepository();
         final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         svnRepository.getFile(filename, revision.toLong(), null, byteArrayOutputStream);
-        final String output = new String(byteArrayOutputStream.toByteArray());
-        return output;
+        return new String(byteArrayOutputStream.toByteArray());
+    }
+
+    public void dispose() {
+        svnOperationFactory.dispose();
     }
 }
