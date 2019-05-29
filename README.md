@@ -1,4 +1,6 @@
-#SEA-Miner (Software Evolution Analysis - Miner)
+# SEA-Miner (Software Evolution Analysis - Miner)
+
+[![Build Status](https://travis-ci.org/sinaneski/sea-miner.svg?branch=master)](https://travis-ci.org/sinaneski/sea-miner)
 
 SEA-Miner is a Java project to mine software repositories.
 
