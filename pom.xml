@@ -6,7 +6,14 @@
 
     <groupId>sea</groupId>
     <artifactId>sea-miner</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.1-SNAPSHOT</version>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <project.java.version>1.8</project.java.version>
+        <maven.compiler.version>3.8.1</maven.compiler.version>
+    </properties>
 
     <dependencies>
 
@@ -54,10 +61,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                </configuration>
+                <version>${maven.compiler.version}</version>
             </plugin>
         </plugins>
     </build>
